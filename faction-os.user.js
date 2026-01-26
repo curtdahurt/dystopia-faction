@@ -11,7 +11,7 @@
 (async function () {
     'use strict';
 
-    const SYNC_URL = "PUT_RAW_URL_HERE"; // raw github json
+    const SYNC_URL = "https://raw.githubusercontent.com/curtdahurt/dystopia-faction/main/data.json"; // raw github json
     const REFRESH = 30000;
 
     let data = { targets:"", spies:"", notes:"" };
