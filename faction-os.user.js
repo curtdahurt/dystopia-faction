@@ -1,185 +1,160 @@
 // ==UserScript==
-// @name         Dystopia Faction OS PRO + Analytics
+// @name         Dystopia Faction OS FINAL
 // @namespace    https://torn.com/dystopia
-// @version      3.0.0
-// @description  Faction OS with war board, spy DB, notes, and player performance analytics
-// @author       Dystopia
+// @version      4.0.0
 // @match        https://www.torn.com/*
-// @downloadURL https://raw.githubusercontent.com/you/dystopia/script.user.js
-// @updateURL   https://raw.githubusercontent.com/you/dystopia/script.user.js
+// @downloadURL  https://raw.githubusercontent.com/you/dystopia/script.user.js
+// @updateURL    https://raw.githubusercontent.com/you/dystopia/script.user.js
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
 // ==/UserScript==
 
-(async function () {
-    'use strict';
+(function () {
 
-    const SYNC_URL = "PUT_RAW_URL_HERE";
-    const REFRESH = 30000;
+    var SYNC_URL = "https://github.com/curtdahurt/dystopia-faction/raw/main/data.json";
+    var REFRESH = 30000;
 
-    let data = { targets:"", spies:"", notes:"" };
+    // ---------------- UI ----------------
+    GM_addStyle(
+        "#dystopia{position:fixed;top:70px;right:10px;width:360px;background:#0b0b0b;color:#0f0;" +
+        "font-family:monospace;border:2px solid #0f0;padding:8px;z-index:9999}" +
+        "#dystopia textarea{width:100%;background:#000;color:#0f0;border:1px solid #0f0;margin-bottom:4px}" +
+        "#dystopia button{width:100%;background:#060;color:white;border:none;padding:4px;margin-bottom:4px}" +
+        "#d-header{cursor:pointer;text-align:center;background:#020;padding:4px;font-weight:bold}" +
+        ".hidden{display:none}"
+    );
 
-    // ---------- UI ----------
-    GM_addStyle(` #dystopia-header {
-    cursor: pointer;
-    font-weight: bold;
-    text-align: center;
-    margin-bottom: 6px;
-    background: #020;
-    padding: 4px;
-}
-.hidden {
-    display: none;
-}
+    var panel = document.createElement("div");
+    panel.id = "dystopia";
+    panel.innerHTML =
+        "<div id='d-header'>DYSTOPIA FACTION OS</div>" +
+        "<div id='d-body'>" +
+        "<b>WAR TARGETS</b><textarea id='t' rows='3'></textarea>" +
+        "<b>SPY DATABASE</b><textarea id='s' rows='3'></textarea>" +
+        "<b>FACTION NOTES</b><textarea id='n' rows='3'></textarea>" +
+        "<b>PLAYER ANALYTICS</b><div id='analytics'></div>" +
+        "<button id='xanax'>LOG XANAX</button>" +
+        "<button id='reset'>RESET STATS</button>" +
+        "<button id='save'>SAVE</button>" +
+        "</div>";
 
-    
-        #dystopia {
-            position: fixed;
-            top: 70px;
-            right: 10px;
-            width: 360px;
-            background: #0b0b0b;
-            color: #0f0;
-            font-family: monospace;
-            border: 2px solid #0f0;
-            padding: 10px;
-            z-index: 9999;
-        }
-        #dystopia textarea {
-            width: 100%;
-            background: #000;
-            color: #0f0;
-            border: 1px solid #0f0;
-            margin-bottom: 6px;
-        }
-        #dystopia button {
-            width: 100%;
-            background: #060;
-            color: white;
-            border: none;
-            padding: 4px;
-            cursor: pointer;
-            margin-bottom: 4px;
-        }
-        #analytics div {
-            font-size: 11px;
-            margin-bottom: 2px;
-        }
-    `);
+    document.body.appendChild(panel);
 
-    const ui = document.createElement("div");
-    ui.id = "dystopia";
-    ui.innerHTML = `
-    <div id="dystopia-header">DYSTOPIA FACTION OS (click)</div>
-    <div id="dystopia-body">
+    var T = document.getElementById("t");
+    var S = document.getElementById("s");
+    var N = document.getElementById("n");
+    var A = document.getElementById("analytics");
 
-        <b>WAR TARGETS</b>
-        <textarea id="t" rows="3"></textarea>
+    document.getElementById("d-header").onclick = function () {
+        document.getElementById("d-body").className =
+            document.getElementById("d-body").className === "hidden" ? "" : "hidden";
+    };
 
-        <b>SPY DATABASE</b>
-        <textarea id="s" rows="3"></textarea>
-
-        <b>FACTION NOTES</b>
-        <textarea id="n" rows="3"></textarea>
-
-        <b>PLAYER ANALYTICS</b>
-        <div id="analytics"></div>
-        <button id="xanax">LOG XANAX</button>
-        <button id="reset">RESET STATS</button>
-
-        <button id="save">SAVE</button>
-    </div>
-`;
-document.getElementById("dystopia-header").onclick = () => {
-    document.getElementById("dystopia-body").classList.toggle("hidden");
-};
-
-    `;
-    document.body.appendChild(ui);
-
-    const T = t, S = s, N = n, A = analytics;
-
-    // ---------- Shared Load ----------
-    async function loadShared() {
+    // ---------------- Shared Load ----------------
+    function loadShared() {
         try {
-            const res = await fetch(SYNC_URL + "?t=" + Date.now());
-            data = await res.json();
-            T.value = data.targets || "";
-            S.value = data.spies || "";
-            N.value = data.notes || "";
-        } catch {}
+            var xhr = new XMLHttpRequest();
+            xhr.open("GET", SYNC_URL + "?t=" + new Date().getTime(), true);
+            xhr.onload = function () {
+                var data = JSON.parse(xhr.responseText);
+                T.value = data.targets || "";
+                S.value = data.spies || "";
+                N.value = data.notes || "";
+            };
+            xhr.send();
+        } catch (e) {}
     }
 
-    // ---------- Analytics Engine ----------
-    let stats = GM_getValue("stats", {
+    // ---------------- Analytics ----------------
+    var stats = GM_getValue("stats", {
         hits: 0,
         respect: 0,
         money: 0,
         xanax: 0,
-        start: Date.now()
+        start: new Date().getTime()
     });
 
     function renderAnalytics() {
-    const hours = ((Date.now() - stats.start) / 3600000).toFixed(2);
-
-    A.innerHTML =
-        "<div>Hits: " + stats.hits + "</div>" +
-        "<div>Respect: " + stats.respect + "</div>" +
-        "<div>Money: $" + stats.money.toLocaleString() + "</div>" +
-        "<div>Xanax: " + stats.xanax + "</div>" +
-        "<div>Session: " + hours + "h</div>" +
-        "<div>Eff: " + (stats.respect / Math.max(stats.hits,1)).toFixed(2) + " R/H</div>";
-}
-
-        `;
+        var hours = ((new Date().getTime() - stats.start) / 3600000).toFixed(2);
+        A.innerHTML =
+            "Hits: " + stats.hits + "<br>" +
+            "Respect: " + stats.respect + "<br>" +
+            "Money: $" + stats.money + "<br>" +
+            "Xanax: " + stats.xanax + "<br>" +
+            "Session: " + hours + "h<br>" +
+            "Eff: " + (stats.respect / Math.max(stats.hits, 1)).toFixed(2) + " R/H";
     }
 
-    // Auto-detect attack results
     function detectCombat() {
-        const result = document.querySelector(".result");
-        if (!result) return;
+        var results = document.getElementsByClassName("result");
+        if (!results || results.length === 0) return;
 
-        if (result.textContent.includes("You hit")) {
-            stats.hits++;
-        }
-        if (result.textContent.includes("respect")) {
-            const r = result.textContent.match(/([\d.]+) respect/);
+        var text = results[0].textContent;
+
+        if (text.indexOf("You hit") !== -1) stats.hits++;
+
+        if (text.indexOf("respect") !== -1) {
+            var r = text.match(/([\d.]+) respect/);
             if (r) stats.respect += parseFloat(r[1]);
         }
-        if (result.textContent.includes("$")) {
-            const m = result.textContent.match(/\$([\d,]+)/);
-            if (m) stats.money += parseInt(m[1].replace(/,/g,""));
+
+        if (text.indexOf("$") !== -1) {
+            var m = text.match(/\$([\d,]+)/);
+            if (m) stats.money += parseInt(m[1].replace(/,/g, ""), 10);
         }
 
         GM_setValue("stats", stats);
         renderAnalytics();
     }
 
-    setInterval(detectCombat, 2000);
+    // ---------------- Spy Button ----------------
+    function addSpyButton() {
+        if (location.href.indexOf("profiles.php") === -1) return;
+        if (document.getElementById("dystopia-spy-btn")) return;
 
-    // Xanax button
-    xanax.onclick = () => {
+        var btn = document.createElement("button");
+        btn.id = "dystopia-spy-btn";
+        btn.innerHTML = "SAVE SPY TO DYSTOPIA";
+        btn.style.background = "#060";
+        btn.style.color = "#fff";
+        btn.style.margin = "6px";
+
+        btn.onclick = function () {
+            var box = document.querySelector(".profile-spy") || document.body;
+            var nameEl = document.getElementsByTagName("h4")[0];
+            var name = nameEl ? nameEl.textContent : "Unknown";
+            var text = box.textContent.replace(/\n+/g, " ");
+            S.value = S.value + "\n" + name + " | " + text;
+            alert("Spy saved for " + name);
+        };
+
+        document.body.insertBefore(btn, document.body.firstChild);
+    }
+
+    // ---------------- Buttons ----------------
+    document.getElementById("xanax").onclick = function () {
         stats.xanax++;
         GM_setValue("stats", stats);
         renderAnalytics();
     };
 
-    // Reset
-    reset.onclick = () => {
-        stats = { hits:0, respect:0, money:0, xanax:0, start:Date.now() };
+    document.getElementById("reset").onclick = function () {
+        stats = { hits:0,respect:0,money:0,xanax:0,start:new Date().getTime() };
         GM_setValue("stats", stats);
         renderAnalytics();
     };
 
-    // Save (read-only model)
-    save.onclick = () => {
+    document.getElementById("save").onclick = function () {
         alert("Read-only client.\nOfficers update GitHub.");
     };
 
-    // Init
-    await loadShared();
+    // ---------------- Init ----------------
+    loadShared();
     renderAnalytics();
+
     setInterval(loadShared, REFRESH);
+    setInterval(detectCombat, 2000);
+    setInterval(addSpyButton, 2000);
 
 })();
