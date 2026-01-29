@@ -1,0 +1,24 @@
+# .github/workflows/update.yml
+name: Auto Update Data
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Update JSON
+        run: |
+          node update.js
+
+      - name: Commit
+        run: |
+          git config user.name "DystopiaBot"
+          git config user.email "bot@dystopia"
+          git add data.json
+          git commit -m "Auto update"
+          git push
