@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         Dystopia Faction OS FINAL
 // @namespace    https://torn.com/dystopia
-// @version      4.0.0
+// @version      1.0.0
 // @match        https://www.torn.com/*
-// @downloadURL  https://raw.githubusercontent.com/you/dystopia/script.user.js
-// @updateURL    https://raw.githubusercontent.com/you/dystopia/script.user.js
+// @downloadURL  https://raw.githubusercontent.com/you/dystopia-faction/raw/main/faction-os.user.js
+// @updateURL    https://raw.githubusercontent.com/you/dystopia-faction/raw/main/faction-os.user.js
 // @grant        GM_addStyle
 // @grant        GM_getValue
 // @grant        GM_setValue
