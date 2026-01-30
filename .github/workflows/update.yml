@@ -11,9 +11,8 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Update JSON
-        run: |
-          node update.js
+      - - name: Run updater
+  run: node update.js
 
       - name: Commit
         run: |
