@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Dystopia Faction OS FINAL
 // @namespace    https://torn.com/dystopia
-// @version      1.0.0
+// @version      3.0.1
 // @match        https://www.torn.com/*
 // @downloadURL  https://raw.githubusercontent.com/you/dystopia-faction/raw/main/faction-os.user.js
 // @updateURL    https://raw.githubusercontent.com/you/dystopia-faction/raw/main/faction-os.user.js
