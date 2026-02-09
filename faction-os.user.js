@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Dystopia Faction Dashboard
-// @namespace    dystopia.faction.dashboard
-// @version      3.0.0
-// @description  Multi-panel faction analytics, compliance, and war dashboard
+// @name         Dystopia Unified Faction Command Dashboard
+// @namespace    dystopia.faction.unified
+// @version      4.0.0
+// @description  Unified multi-panel faction dashboard: analytics, compliance, bank, war scan, simulator, loadout (PDA Safe)
 // @match        https://www.torn.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -14,35 +14,43 @@
 (function () {
     'use strict';
 
-    /* =======================
-       CONFIG / STORAGE
-    ======================= */
-var settings = GM_getValue("d_settings", {
-        scan: true,
-        simulator: true,
-        loadout: true
-    });
-    var DASH_ID = "dystopia_dash";
-    var STORE_KEY = "dystopia_stats";
+    /* =========================
+       CONSTANTS / STORAGE
+    ========================= */
 
-    var stats = GM_getValue(STORE_KEY, {
+    const DASH_ID = "dystopia_unified_dash";
+    const STORE_KEY = "dystopia_unified_state";
+
+    const state = GM_getValue(STORE_KEY, {
         start: Date.now(),
-        hits: 0,
-        respect: 0,
-        money: 0,
-        xanax: 0,
         lastActive: Date.now(),
+
+        stats: {
+            hits: 0,
+            respect: 0,
+            money: 0,
+            xanax: 0
+        },
+
         bankRequests: [],
-        officerMode: false
+        officerMode: false,
+
+        settings: {
+            scan: true,
+            simulator: true,
+            loadout: true
+        },
+
+        lastTargets: ""
     });
 
     function save() {
-        GM_setValue(STORE_KEY, stats);
+        GM_setValue(STORE_KEY, state);
     }
 
-    /* =======================
+    /* =========================
        UTILITIES
-    ======================= */
+    ========================= */
 
     function hoursSince(t) {
         return ((Date.now() - t) / 3600000).toFixed(2);
@@ -52,16 +60,31 @@ var settings = GM_getValue("d_settings", {
         return Math.max(min, Math.min(max, n));
     }
 
-    /* =======================
+    function isOfficer() {
+        const t = document.body.textContent;
+        return t.includes("Officer") || t.includes("Leader") || state.officerMode;
+    }
+
+    function copyToClipboard(text) {
+        const t = document.createElement("textarea");
+        t.value = text;
+        document.body.appendChild(t);
+        t.select();
+        document.execCommand("copy");
+        document.body.removeChild(t);
+        alert("Copied to clipboard.");
+    }
+
+    /* =========================
        ANALYTICS LOGIC
-    ======================= */
+    ========================= */
 
     function respectEfficiency() {
-        return (stats.respect / Math.max(stats.hits, 1)).toFixed(2);
+        return (state.stats.respect / Math.max(state.stats.hits, 1)).toFixed(2);
     }
 
     function efficiencyRank() {
-        var e = respectEfficiency();
+        const e = respectEfficiency();
         if (e >= 0.35) return "Elite";
         if (e >= 0.25) return "Solid";
         if (e >= 0.15) return "Low";
@@ -69,225 +92,218 @@ var settings = GM_getValue("d_settings", {
     }
 
     function complianceStatus() {
-        if (stats.hits >= 10 && stats.xanax >= 1) return "Compliant";
-        if (stats.hits > 0) return "Warning";
+        if (state.stats.hits >= 10 && state.stats.xanax >= 1) return "Compliant";
+        if (state.stats.hits > 0) return "Warning";
         return "Non-Compliant";
     }
 
     function xanDiscipline() {
-        var expected = Math.floor(hoursSince(stats.start) / 6);
-        if (stats.xanax === expected) return "Perfect";
-        if (stats.xanax < expected) return "Under-used";
+        const expected = Math.floor(hoursSince(state.start) / 6);
+        if (state.stats.xanax === expected) return "Perfect";
+        if (state.stats.xanax < expected) return "Under-used";
         return "Over-used";
     }
- /* ================= HELPERS ================= */
 
-    function isOfficer() {
-        var t = document.body.textContent;
-        return t.indexOf("Officer") !== -1 || t.indexOf("Leader") !== -1;
+    /* =========================
+       WAR SCAN
+    ========================= */
+
+    function scanFaction() {
+        if (!state.settings.scan) return;
+
+        const text = document.body.textContent;
+        const levels = text.match(/Level\s+\d+/gi) || [];
+
+        const low = [], mid = [], high = [], avoid = [];
+
+        levels.forEach(lvl => {
+            const n = parseInt(lvl.replace(/\D/g, ""), 10);
+            if (n < 25) low.push("L" + n);
+            else if (n < 50) mid.push("L" + n);
+            else if (n < 80) high.push("L" + n);
+            else avoid.push("L" + n);
+        });
+
+        state.lastTargets =
+            "LOW\n" + low.join(", ") + "\n\n" +
+            "MID\n" + mid.join(", ") + "\n\n" +
+            "HIGH\n" + high.join(", ") + "\n\n" +
+            "AVOID\n" + avoid.join(", ");
+
+        save();
+        renderAll();
     }
 
-    function copy(text) {
-        var t = document.createElement("textarea");
-        t.value = text;
-        document.body.appendChild(t);
-        t.select();
-        document.execCommand("copy");
-        document.body.removeChild(t);
-        alert("Copied. Paste into Faction Notes.");
-    }
-
-    /* =======================
+    /* =========================
        UI CREATION
-    ======================= */
+    ========================= */
 
     function createDashboard() {
         if (document.getElementById(DASH_ID)) return;
 
-        var dash = document.createElement("div");
+        const dash = document.createElement("div");
         dash.id = DASH_ID;
-        dash.innerHTML =
-            "<div id='d_head' style='background:#222;padding:6px;font-weight:bold;cursor:pointer;'>Dystopia Command</div>" +
-            "<div id='d_body' style='padding:6px;'>" +
 
-            "<b>Analytics</b><div id='a_box'></div><hr>" +
+        dash.innerHTML = `
+            <div id="d_head">Dystopia Command Dashboard</div>
+            <div id="d_body">
 
-            "<b>Bank Request</b>" +
-            "<input id='b_amt' type='number' style='width:100%;margin-bottom:4px;' placeholder='Amount'>" +
-            "<button id='b_req' style='width:100%;'>Request</button>" +
-            "<div id='b_list'></div><hr>" +
+                <h4>Analytics</h4>
+                <div id="panel_analytics"></div>
 
-            "<b>War Tools</b>" +
-            "<button id='scan_btn' style='width:100%;'>Scan Enemy Faction</button>" +
-            "<pre id='targets' style='white-space:pre-wrap;'></pre>" +
-            "<button id='pub_notes' style='width:100%;'>Copy for Notes</button><hr>" +
+                <h4>Member Status</h4>
+                <div id="panel_status"></div>
 
-            "<b>War Simulator</b><div id='sim'></div><hr>" +
+                <h4>Faction Bank</h4>
+                <div id="panel_bank"></div>
 
-            "<b>Loadout Assistant</b><div id='load'></div><hr>" +
+                <h4>War Tools</h4>
+                <div id="panel_war"></div>
 
-            "<b>Officer Toggles</b>" +
-            "<label><input type='checkbox' id='t_scan'> Enemy Scan</label><br>" +
-            "<label><input type='checkbox' id='t_sim'> Simulator</label><br>" +
-            "<label><input type='checkbox' id='t_load'> Loadout</label>" +
+                <h4>War Simulator</h4>
+                <div id="panel_sim"></div>
 
-            "</div>";
+                <h4>Loadout Assistant</h4>
+                <div id="panel_loadout"></div>
+
+                <h4>Officer Controls</h4>
+                <div id="panel_officer"></div>
+
+            </div>
+        `;
 
         document.body.appendChild(dash);
         makeDraggable(dash);
         makeCollapsible();
     }
 
-    GM_addStyle(
-        "#" + DASH_ID + "{" +
-        "position:fixed;top:120px;left:20px;width:300px;" +
-        "background:#111;color:#eee;z-index:9999;" +
-        "border:1px solid #444;font-size:12px}" +
-        "#d_head{background:#222;padding:6px;cursor:move;font-weight:bold}" +
-        "#d_body{padding:6px}" +
-        "h4{margin:6px 0 2px 0;font-size:12px;border-bottom:1px solid #333}"
-    );
-
-    /* =======================
-       UI BEHAVIOR
-    ======================= */
-    document.getElementById("t_scan").checked = settings.scan;
-        document.getElementById("t_sim").checked = settings.simulator;
-        document.getElementById("t_load").checked = settings.loadout;
-
-    document.getElementById("t_scan").onchange = save.Settings;
-        document.getElementById("t_sim").onchange = save.Settings;
-        document.getElementById("t_load").onchange = save.Settings;
+    GM_addStyle(`
+        #${DASH_ID}{
+            position:fixed;
+            top:120px;
+            left:20px;
+            width:320px;
+            background:#111;
+            color:#eee;
+            border:1px solid #444;
+            font-size:12px;
+            z-index:9999
+        }
+        #d_head{
+            background:#222;
+            padding:6px;
+            font-weight:bold;
+            cursor:move
+        }
+        #d_body{padding:6px}
+        h4{
+            margin:6px 0 2px;
+            font-size:12px;
+            border-bottom:1px solid #333
+        }
+        button{width:100%;margin:2px 0}
+        pre{white-space:pre-wrap}
+    `);
 
     function makeCollapsible() {
-        var head = document.getElementById("d_head");
-        var body = document.getElementById("d_body");
-
-        head.onclick = function () {
-            body.style.display =
-                body.style.display === "none" ? "block" : "none";
+        const head = document.getElementById("d_head");
+        const body = document.getElementById("d_body");
+        head.onclick = () => {
+            body.style.display = body.style.display === "none" ? "block" : "none";
         };
     }
 
     function makeDraggable(el) {
-        var head = el.querySelector("#d_head");
-        var dragging = false, ox = 0, oy = 0;
+        const head = el.querySelector("#d_head");
+        let dragging = false, ox = 0, oy = 0;
 
-        head.onmousedown = function (e) {
+        head.onmousedown = e => {
             dragging = true;
             ox = e.clientX - el.offsetLeft;
             oy = e.clientY - el.offsetTop;
         };
 
-        document.onmousemove = function (e) {
+        document.onmousemove = e => {
             if (!dragging) return;
             el.style.left = clamp(e.clientX - ox, 0, window.innerWidth - 50) + "px";
             el.style.top = clamp(e.clientY - oy, 0, window.innerHeight - 50) + "px";
         };
 
-        document.onmouseup = function () {
-            dragging = false;
-        };
+        document.onmouseup = () => dragging = false;
     }
 
-    /* =======================
+    /* =========================
        RENDER PANELS
-    ======================= */
-    /* ================= WAR SCAN ================= */
-
-    var lastTargets = "";
-
-    function scanFaction() {
-        if (!settings.scan) return;
-        var rows = document.body.textContent;
-        var low = [], mid = [], high = [], avoid = [];
-
-        var lvls = rows.match(/Level\s+\d+/gi) || [];
-        for (var i = 0; i < lvls.length; i++) {
-            var l = parseInt(lvls[i].replace(/\D/g, ""), 10);
-            if (l < 25) low.push("L" + l);
-            else if (l < 50) mid.push("L" + l);
-            else if (l < 80) high.push("L" + l);
-            else avoid.push("L" + l);
-        }
-
-        lastTargets =
-            "LOW\n" + low.join(", ") + "\n\n" +
-            "MID\n" + mid.join(", ") + "\n\n" +
-            "HIGH\n" + high.join(", ") + "\n\n" +
-            "AVOID\n" + avoid.join(", ");
-
-        function render(){
-    }
-
-    /* ================= SIMULATOR ================= */
-
-    function renderSim() {
-        if (!settings.simulator) return;
-        document.getElementById("sim").innerHTML =
-            "Estimated Outcome:<br>" +
-            "If LOW/MID focused → High win chance<br>" +
-            "If HIGH engaged → Chain risk ↑";
-    }
-
-    /* ================= LOADOUT ================= */
-
-    function renderLoadout() {
-        if (!settings.loadout) return;
-        document.getElementById("load").innerHTML =
-            "LOW: Fast weapons, no boosters<br>" +
-            "MID: Balanced loadout<br>" +
-            "HIGH: Armor + boosters<br>" +
-            "AVOID: Skip unless ordered";
-    }
-
-    /* ================= NOTES ================= */
-
-    function publishNotes() {
-        copy(
-            "WAR TARGETS\n\n" +
-            lastTargets + "\n\n" +
-            "Updated: " + new Date().toLocaleString()
-        );
-    }
+    ========================= */
 
     function renderAnalytics() {
-        document.getElementById("panel_analytics").innerHTML =
-            "Hits: " + stats.hits + "<br>" +
-            "Respect: " + stats.respect + "<br>" +
-            "Money: $" + stats.money.toLocaleString() + "<br>" +
-            "Xanax: " + stats.xanax + "<br>" +
-            "Session: " + hoursSince(stats.start) + "h<br>" +
-            "Efficiency: " + respectEfficiency() + " R/H";
+        panel_analytics.innerHTML = `
+            Hits: ${state.stats.hits}<br>
+            Respect: ${state.stats.respect}<br>
+            Money: $${state.stats.money.toLocaleString()}<br>
+            Xanax: ${state.stats.xanax}<br>
+            Session: ${hoursSince(state.start)}h<br>
+            Efficiency: ${respectEfficiency()}
+        `;
     }
 
     function renderStatus() {
-        document.getElementById("panel_status").innerHTML =
-            "Compliance: " + complianceStatus() + "<br>" +
-            "Inactivity: " + hoursSince(stats.lastActive) + "h<br>" +
-            "Efficiency Rank: " + efficiencyRank() + "<br>" +
-            "Xan Discipline: " + xanDiscipline();
+        panel_status.innerHTML = `
+            Compliance: ${complianceStatus()}<br>
+            Efficiency Rank: ${efficiencyRank()}<br>
+            Xan Discipline: ${xanDiscipline()}<br>
+            Inactivity: ${hoursSince(state.lastActive)}h
+        `;
     }
 
     function renderBank() {
-        document.getElementById("panel_bank").innerHTML =
-            "<button id='req_bank'>Request Withdrawal</button><br>" +
-            stats.bankRequests.map(function (r, i) {
-                return i + 1 + ". $" + r.amount + " [" + r.status + "]";
-            }).join("<br>");
+        let html = `<button id="req_bank">Request Withdrawal</button><br>`;
+        if (isOfficer()) {
+            html += state.bankRequests.map((r, i) =>
+                `${i + 1}. $${Number(r.amount).toLocaleString()} [${r.status}]`
+            ).join("<br>");
+        }
+        panel_bank.innerHTML = html;
     }
 
     function renderWar() {
-        document.getElementById("panel_war").innerHTML =
-            "<button>Scan Enemy Faction</button><br>" +
-            "<button>Simulate War</button><br>" +
-            "Target grouping by efficiency (manual input)";
+        panel_war.innerHTML = `
+            <button id="scan_btn">Scan Enemy Faction</button>
+            <pre>${state.lastTargets || ""}</pre>
+            <button id="copy_targets">Copy for Notes</button>
+        `;
+    }
+
+    function renderSim() {
+        if (!state.settings.simulator) {
+            panel_sim.innerHTML = "Disabled";
+            return;
+        }
+        panel_sim.innerHTML =
+            "LOW/MID focus → High win probability<br>" +
+            "HIGH targets → Chain risk ↑<br>" +
+            "AVOID → Officer authorization only";
+    }
+
+    function renderLoadout() {
+        if (!state.settings.loadout) {
+            panel_loadout.innerHTML = "Disabled";
+            return;
+        }
+        panel_loadout.innerHTML =
+            "LOW: Speed weapons, no boosters<br>" +
+            "MID: Balanced kit<br>" +
+            "HIGH: Armor + boosters<br>" +
+            "AVOID: Skip";
     }
 
     function renderOfficer() {
-        document.getElementById("panel_officer").innerHTML =
-            "<label><input type='checkbox' id='officer_toggle' " +
-            (stats.officerMode ? "checked" : "") + "> Officer Mode</label>";
+        panel_officer.innerHTML = `
+            <label><input type="checkbox" id="officer_toggle" ${state.officerMode ? "checked" : ""}> Officer Mode</label><br>
+            <label><input type="checkbox" id="t_scan" ${state.settings.scan ? "checked" : ""}> Enemy Scan</label><br>
+            <label><input type="checkbox" id="t_sim" ${state.settings.simulator ? "checked" : ""}> Simulator</label><br>
+            <label><input type="checkbox" id="t_load" ${state.settings.loadout ? "checked" : ""}> Loadout</label>
+        `;
     }
 
     function renderAll() {
@@ -295,38 +311,50 @@ var settings = GM_getValue("d_settings", {
         renderStatus();
         renderBank();
         renderWar();
+        renderSim();
+        renderLoadout();
         renderOfficer();
     }
 
-    /* =======================
+    /* =========================
        EVENTS
-    ======================= */
+    ========================= */
 
-    document.addEventListener("click", function () {
-        stats.lastActive = Date.now();
-        save();
-    });
+    document.addEventListener("click", e => {
+        state.lastActive = Date.now();
 
-    document.addEventListener("click", function (e) {
         if (e.target.id === "req_bank") {
-            var amt = prompt("Enter withdrawal amount:");
+            const amt = prompt("Enter withdrawal amount:");
             if (!amt) return;
-            stats.bankRequests.push({ amount: amt, status: "Pending" });
+            state.bankRequests.push({ amount: amt, status: "Pending" });
             save();
             renderBank();
         }
 
-        if (e.target.id === "officer_toggle") {
-            stats.officerMode = e.target.checked;
-            save();
+        if (e.target.id === "scan_btn") scanFaction();
+
+        if (e.target.id === "copy_targets") {
+            copyToClipboard("WAR TARGETS\n\n" + state.lastTargets + "\n\nUpdated: " + new Date().toLocaleString());
         }
+
+        if (e.target.id === "officer_toggle") state.officerMode = e.target.checked;
+        if (e.target.id === "t_scan") state.settings.scan = e.target.checked;
+        if (e.target.id === "t_sim") state.settings.simulator = e.target.checked;
+        if (e.target.id === "t_load") state.settings.loadout = e.target.checked;
+
+        save();
     });
 
-    /* =======================
+    /* =========================
        BOOT
-    ======================= */
+    ========================= */
 
     function boot() {
         createDashboard();
         renderAll();
-        setInterval(renderAll, 5000]};
+        setInterval(renderAll, 5000);
+    }
+
+    setTimeout(boot, 1500);
+
+})();
