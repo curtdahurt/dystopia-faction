@@ -16,8 +16,8 @@ jobs:
 
       - name: Commit
         run: |
-          git config user.name "DystopiaBot"
-          git config user.email "bot@dystopia"
+          git config curtdahurt "DystopiaBot"
+          git config curtstemple@gmail.com "bot@dystopia"
           git add data.json
           git commit -m "Auto update"
           git push
